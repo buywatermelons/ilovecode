@@ -5,10 +5,13 @@ clf;        %clears figures
 clc;        %clears console
 clear;      %clears workspace
 
-variance=1; % the variance of the measurement
-num_par=50;
-num_pos=10;
-par_per_pos=5;
+damping_factor=0.2; % damping factor in the normal distribution
+variance=2; % the variance of the measurement
+num_par=500; % number of particles
+num_pos=100; % number of initial positions
+par_per_pos=5; % number of particles per position
+rmov = 5*rand; % random movement assigned to a particle when resampling
+rrot= pi*rand/6; % random rotation assigned to a particle when resampling
 map=[0,0;60,0;60,45;45,45;45,59;106,59;106,105;0,105];
 
 hold on;
@@ -39,7 +42,7 @@ end
 particles(1).drawMap(); 
 robot.drawBot(10);
 
-
+for steps=1:10
 %%%%%%%%%%%%%%%%% Movement %%%%%%%%%%%%%%%%%%
 age=input('Press any key to continue...  ')
 %hold off
@@ -47,15 +50,19 @@ clf;
 axis equal
 particles(1).drawMap();
 hold on
+movement=10*rand;
+rotation=pi/2*rand;
 for i = 1:num_par
-    particles(i).move(10);
+    particles(i).move(movement);
+    particles(i).turn(rotation);
     particles(i).drawBot(3);
 end
-robot.move(10);
+robot.move(movement);
+robot.turn(rotation);
 robot.drawBot(5);
-age=input('Press any key to continue...  ')
 
-%hold off
+
+%{
 clf;
 particles(1).drawMap();
 axis equal
@@ -66,7 +73,7 @@ for i = 1:num_par
 end
 robot.move(-10)
 robot.drawBot(5)
-
+%}
 %%%%%%%%%%%%%%% Scanning %%%%%%%%%%%%%%
 botSim.sensorNoise = variance;
 [distance crossingPoint]  = robot.ultraScan();
@@ -76,7 +83,7 @@ end
 
 % Computing the weight of the particle
 for i=1:num_par
-weight(i)=1*sqrt(2*pi*variance^2)*exp(-(scan_results(i)-distance)^2/(2*variance^2));
+weight(i)=1*sqrt(2*pi*variance^2)*exp(-(scan_results(i)-distance)^2/(2*variance^2)) + damping_factor;
 end
 
 % Computing the summ of the weights
@@ -102,11 +109,12 @@ end
 chosen_particle(i)=j;
 end
 
+%Creating the new particles and deleting the old ones.
 for i=1:num_par
 pos=particles(chosen_particle(i)).getBotPos();
 ang=particles(chosen_particle(i)).getBotAng();
-particles(i).setBotPos(pos);
-particles(i).setBotAng(ang);
+particles(i).setBotPos(pos+[5*rand,5*rand]);
+particles(i).setBotAng(ang + pi*rand/6);
 end
 
 clf;
@@ -118,3 +126,4 @@ for i=1:num_par
 particles(i).drawBot(3)
 end
 robot.drawBot(5)
+end
