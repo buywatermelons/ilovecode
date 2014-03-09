@@ -87,24 +87,34 @@ end
 
 % Normalisation
 for i=1:num_par
-probability(i)=weight(i)/weight_sum
+probability(i)=weight(i)/weight_sum;
 end
 
 % Resampling
-
+% Ruley-wheel selection to choose 50 new particles
 for i=1:num_par
-rand=weight_sum*rand;
+rand_part=rand; % Choose a random value from 1 to 0
 j=1;
-while(rand > 0)
-if (rand < probability(j))
-chosen_particle(i)=j
-else
-    rand=rand-probability(j);
-    j=j+1;
+while rand_part >= probability(j) 
+rand_part=rand_part-probability(j);
+j=j+1;
 end
-end
+chosen_particle(i)=j;
 end
 
 for i=1:num_par
-chosen_particle(i)
+pos=particles(chosen_particle(i)).getBotPos();
+ang=particles(chosen_particle(i)).getBotAng();
+particles(i).setBotPos(pos);
+particles(i).setBotAng(ang);
 end
+
+clf;
+particles(1).drawMap();
+axis equal
+hold on
+
+for i=1:num_par
+particles(i).drawBot(3)
+end
+robot.drawBot(5)
