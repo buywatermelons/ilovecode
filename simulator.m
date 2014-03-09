@@ -5,6 +5,7 @@ clf;        %clears figures
 clc;        %clears console
 clear;      %clears workspace
 
+variance=1; % the variance of the measurement
 num_par=50;
 num_pos=10;
 par_per_pos=5;
@@ -40,7 +41,7 @@ robot.drawBot(10);
 
 
 %%%%%%%%%%%%%%%%% Movement %%%%%%%%%%%%%%%%%%
-age=input('I love drugs ')
+age=input('Press any key to continue...  ')
 %hold off
 clf;
 axis equal
@@ -52,7 +53,7 @@ for i = 1:num_par
 end
 robot.move(10);
 robot.drawBot(5);
-age=input('I love drugs ')
+age=input('Press any key to continue...  ')
 
 %hold off
 clf;
@@ -67,10 +68,43 @@ robot.move(-10)
 robot.drawBot(5)
 
 %%%%%%%%%%%%%%% Scanning %%%%%%%%%%%%%%
+botSim.sensorNoise = variance;
 [distance crossingPoint]  = robot.ultraScan();
 for i = 1:num_par
 scan_results(i)=particles(i).ultraScan();
 end
 
+% Computing the weight of the particle
+for i=1:num_par
+weight(i)=1*sqrt(2*pi*variance^2)*exp(-(scan_results(i)-distance)^2/(2*variance^2));
+end
 
+% Computing the summ of the weights
+weight_sum=0;
+for i=1:num_par
+weight_sum= weight_sum+ weight(i);
+end
 
+% Normalisation
+for i=1:num_par
+probability(i)=weight(i)/weight_sum
+end
+
+% Resampling
+
+for i=1:num_par
+rand=weight_sum*rand;
+j=1;
+while(rand > 0)
+if (rand < probability(j))
+chosen_particle(i)=j
+else
+    rand=rand-probability(j);
+    j=j+1;
+end
+end
+end
+
+for i=1:num_par
+chosen_particle(i)
+end
