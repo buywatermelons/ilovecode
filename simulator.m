@@ -1,25 +1,35 @@
 %%%%%% Purpose: Robot simulator 
 %%%%%% Author : Arthur Klezovichs
 
+
 clf;        %clears figures
 clc;        %clears console
 clear;      %clears workspace
 t = cputime;
+t0 = cputime;
+fName = 'weights.txt'; 
+fName1 = 'results.txt';        %# A file name
+%fid = fopen(fName,'w');  
+%fid1 = fopen(fName1,'w');          %# Open the file
 damping_factor=0;
 sn=4.9; % sensor noise
 rot_factor = pi; % random rotation angle 
 turning_noise=0.01;
-motion_noise=0.3; % around optimal
-scatter = 1; % number of bad scans before rescattering the particles
-low_weight= 1.7; % summ of the weight of an unsuccessful scan
+motion_noise=0.025; % around optimal
+scatter = 4; % number of bad scans before rescattering the particles
+low_weight= 1.2e-11; % summ of the weight of an unsuccessful scan
 num_scans=20;
-num_par=100; % number of particles
-num_pos=20; % number of initial positions
+num_par=1000; % number of particles
+num_pos=200; % number of initial positions
 par_per_pos= num_par/num_pos; % number of particles per position
 map=[0,0;60,0;60,45;45,45;45,59;106,59;106,105;0,105];
 num_steps=10;
 sq_size = 5; % square size we want to converge to
-test_sample = 1;  
+test_sample = 20;  
+dist_acc = 0; % Used to compute the average distance, when averaging over many runs
+err_c =0; % Error count
+cerr_c =0; % Critical error count
+in_box=0; % For how many iteration do we have a particle cluster
 %hold on;
 %axis equal;
 for test = 1: test_sample
@@ -63,21 +73,33 @@ for step=1:num_steps+1
 
 % Checking if we need to rescatter 
 if(bad_scans == scatter)
-for i = 1:num_par
-particles(i).randomPose(2);
-particles(i).setBotAng(2*pi*rand);
+  for i = 1:num_pos
+    particles(i).randomPose(1); 
+  end
+
+  j=num_pos+1;
+  for i = 1:num_pos
+    part_pos=particles(i).getBotPos(); 
+    part_orient=particles(i).getBotAng();
+  for k = 1:par_per_pos - 1
+    particles(j).setBotPos(part_pos);
+    particles(j).setBotAng(part_orient + j*2*pi/5);
+    j=j+1;
+  end
+  end
+  bad_scans=0;
+
+%%%%% Draws the scatered particles
+clf;
+particles(1).drawMap();
+axis equal
+hold on   
+cm.drawGBot(3);
+robot.drawRBot(5); 
+for i=1:num_par
+particles(i).drawBot(3);
 end
-bad_scans=0;
-%display('Rescatered');
-%clf;
-%particles(1).drawMap();
-%axis equal
-%hold on
-%for i=1:num_par
-%particles(i).drawBot(3)
-%end
-%robot.drawRBot(5)
-%input('Press any key to continue...  ');
+
 end
 
 
@@ -116,7 +138,8 @@ for i=1:num_par
   y=distance;
   v(1:num_scans)=sn^2;
   sigma=diag(v);
-  weight(i)=damping_factor+(1/sqrt(det(2*pi*sigma)))*exp((-1/2)*(x-y)'*inv(sigma)*(x-y));
+  weight(i)=damping_factor+exp((-1/2)*(x-y)'*inv(sigma)*(x-y));
+  % Real one weight(i)=damping_factor+(1/sqrt(det(2*pi*sigma)))*exp((-1/2)*(x-y)'*inv(sigma)*(x-y));
   %  weight(i)=1*sqrt(2*pi*sn^2)*exp(-(current_vector(1)-distance(1))^2/(2*sn^2)) + damping_factor;
   else 
     weight(i)=0;
@@ -160,25 +183,23 @@ end
 %%%%%%%%%%%%%%%%%% Movement %%%%%%%%%%%%%%%%%%%%%%%%%
 %Prevents the robot from bumping into walls
 distance_s=distance(1);
-%if(distance < 10)
 if(distance_s < 10)
-%If too close to a wall - move back, but not to far
-%so we don't bump into another wall
-rotation = pi;
-[distance crossingPoint]  = robot.ultraScan();
-distance_s=distance(1);
-movement=(2*distance_s)*rand;
-robot.turn(rotation);
-robot.move(movement);
+  rotation = pi;
+  [distance crossingPoint]  = robot.ultraScan();
+  distance_s=distance(1);
+  movement=(2*distance_s)*rand;
 for i = 1:num_par
     particles(i).turn(rotation);
     particles(i).move(movement); 
-   % particles(i).drawBot(3);
 end
 else 
-rotation=rot_factor*rand;
-%movement=(distance_s/6)*rand;
-movement=9*rand;
+  rotation=rot_factor*rand;
+if( rem(step,3) == 0 )
+  movement=9*rand;
+else
+  movement=3*rand;
+end
+
 robot.move(movement);
 robot.turn(rotation);
 for i = 1:num_par
@@ -226,17 +247,14 @@ for i=1:num_par
 particles(i).drawBot(3);
 end
 pause(2);
-fName = 'weights.txt';         %# A file name
-fid = fopen(fName,'a');            %# Open the file
-if fid ~= -1
-  fprintf(fid,'Weights@Step %d: min/max/mean \n',step,mean(weight),max(weight),min(weight));       %# Print the string
-  fclose(fid);                     %# Close the file
-end
+%if fid ~= -1
+  %fprintf(fid,'Weights@Step %d:mean|max|summ %.1e|%.1e|%.1e \n',step,mean(weight),max(weight),sum(weight));
+%end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-if((nnz(in) > 0.9*num_par)) %&& (step == num_steps))
+if((nnz(in) > 0.9*num_par)) %&& (rem(step,3) == 0))
 
-
+in_box=in_box+1;
 real_pos=robot.getBotPos();
 real_orient=robot.getBotAng();
 
@@ -250,7 +268,9 @@ end
 
 
 %if(nnz(in) > 0.99*num_par)
+if(in_box == 5)
 break;
+end
 %else
 %num_scans=1;
 %end
@@ -267,7 +287,7 @@ for i=1:num_par
 particles(i).turn(pi/2 - final_orient);
 end
 robot.turn(pi/2-real_orient);
-
+cm.turn(pi/2-final_orient);
 
 
 %Drawing the final configuration and outputing the results
@@ -277,16 +297,40 @@ axis equal
 hold on
 
 for i=1:num_par
-particles(i).drawBot(3);
+  particles(i).drawBot(3);
 end
 
 cm.drawGBot(3);
 robot.drawRBot(5);
 
+
 plot(xv,yv,x(~in),y(~in),'bo');
+
+
 e = cputime - t;
-fprintf('Real pos %.1f %.1f orient %.1f \n',real_pos(1),real_pos(2),real_orient);
-fprintf('Final pos %.1f %.1f orient %.1f \n',final_pos(1),final_pos(2),final_orient);
-fprintf('Distance %.1f  oriernt %.1f \n',sqrt((real_pos(1)-final_pos(1))^2+(real_pos(2)-final_pos(2))^2),real_orient-final_orient);
-fprintf('Elapsed %.2f(s)/%d steps/%d scans \n',e,step,num_scans*step);
+dist=sqrt((real_pos(1)-final_pos(1))^2+(real_pos(2)-final_pos(2))^2);
+dist_acc=dist_acc + dist;
+
+% Distance estimation error check
+if( dist > 5 )
+ % fprintf(fid1,'###');
+  err_c = err_c+1;
+  if (dist > 15)
+    cerr_c = cerr_c + 1;
+  end
 end
+
+%if fid1 ~= -1
+  fprintf('Dist:%.1f DAng:%.1f %.2f(s)\n',dist,real_orient-final_orient,e);
+  fprintf('Time:%.2f(s)/%d steps\n',e,step);
+%end
+%fprintf('Test case %d\n',test);
+t = cputime;
+
+end
+%fprintf(fid1,'ADist:%.1f %.2f(s)\n',dist_acc/test_sample,t-t0);
+%fprintf(fid1,'Errors:%d/Critical(>15cm):%d',err_c,cerr_c);
+%fclose(fid);
+%fclose(fid1);
+fp=cm.getBotPos();
+fo=cm.getBotAng();
