@@ -200,16 +200,16 @@ end
 
 if(distance_s > 15 )
   rotation=rot_factor*rand;
-
-
 if( rem(step,2) == 0 )
   movement=5*rand + 7;
+else
+movement=10*rand;
+end
+
 if (rem(step,4) == 0 )
   movement=distance_s-10;
 end
-else
-  movement=10*rand;
-end
+  
 end
 
 robot.move(movement);
