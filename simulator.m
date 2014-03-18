@@ -7,32 +7,35 @@ clc;        %clears console
 clear;      %clears workspace
 t = cputime;
 t0 = cputime;
-fName = 'weights.txt'; 
-fName1 = 'results.txt';        %# A file name
+%fName = 'weights.txt'; 
+%fName1 = 'results.txt';        %# A file name
 %fid = fopen(fName,'w');  
 %fid1 = fopen(fName1,'w');          %# Open the file
 damping_factor=0;
 sn=4.9; % sensor noise
 rot_factor = pi; % random rotation angle 
 turning_noise=0.01;
-motion_noise=0.025; % around optimal
-scatter = 4; % number of bad scans before rescattering the particles
+motion_noise=0.1; % around optimal
+scatter = 3; % number of bad scans before rescattering the particles
 low_weight= 1.2e-11; % summ of the weight of an unsuccessful scan
-num_scans=20;
-num_par=1000; % number of particles
-num_pos=200; % number of initial positions
+
+num_par=100; % number of particles
+num_pos=100; % number of initial positions
 par_per_pos= num_par/num_pos; % number of particles per position
 map=[0,0;60,0;60,45;45,45;45,59;106,59;106,105;0,105];
 num_steps=10;
 sq_size = 5; % square size we want to converge to
-test_sample = 20;  
+test_sample = 10;  
 dist_acc = 0; % Used to compute the average distance, when averaging over many runs
-err_c =0; % Error count
+ok_c =0; % OK count
 cerr_c =0; % Critical error count
-in_box=0; % For how many iteration do we have a particle cluster
+in_box=0;
+num_scans=15;
+conv_time=10; % For how many iteratiodn do we have a particle cluster
 %hold on;
 %axis equal;
 for test = 1: test_sample
+in_box=0;
 %%%%%%%%%%%%%%%% Initialization %%%%%%%%%%%%%%%%%%%%%%
 robot=BotSim(map);
 cm=BotSim(map); % center of mass of particles
@@ -106,6 +109,9 @@ end
 %Do an initial scan
 [distance crossingPoint]  = robot.ultraScan();
 for i = 1:num_par
+if(particles(i).insideMap == 0)
+particles(i).randomPose(3);
+end
 [scan_results{i}, cross]=particles(i).ultraScan();
 end
 
@@ -139,10 +145,13 @@ for i=1:num_par
   v(1:num_scans)=sn^2;
   sigma=diag(v);
   weight(i)=damping_factor+exp((-1/2)*(x-y)'*inv(sigma)*(x-y));
-  % Real one weight(i)=damping_factor+(1/sqrt(det(2*pi*sigma)))*exp((-1/2)*(x-y)'*inv(sigma)*(x-y));
+  % Real one below
+  % weight(i)=damping_factor+(1/sqrt(det(2*pi*sigma)))*exp((-1/2)*(x-y)'*inv(sigma)*(x-y));
   %  weight(i)=1*sqrt(2*pi*sn^2)*exp(-(current_vector(1)-distance(1))^2/(2*sn^2)) + damping_factor;
   else 
     weight(i)=0;
+    particles(i).randomPose(3);
+    
   end
 
 end
@@ -182,22 +191,25 @@ end
 
 %%%%%%%%%%%%%%%%%% Movement %%%%%%%%%%%%%%%%%%%%%%%%%
 %Prevents the robot from bumping into walls
+
 distance_s=distance(1);
-if(distance_s < 10)
-  rotation = pi;
-  [distance crossingPoint]  = robot.ultraScan();
-  distance_s=distance(1);
-  movement=(2*distance_s)*rand;
-for i = 1:num_par
-    particles(i).turn(rotation);
-    particles(i).move(movement); 
+if(distance_s < 15)
+  rotation = pi/4 + pi*rand/4;
+  movement=(-1*distance_s/3);
 end
-else 
+
+if(distance_s > 15 )
   rotation=rot_factor*rand;
-if( rem(step,3) == 0 )
-  movement=9*rand;
+
+
+if( rem(step,2) == 0 )
+  movement=5*rand + 7;
+if (rem(step,4) == 0 )
+  movement=distance_s-10;
+end
 else
-  movement=3*rand;
+  movement=10*rand;
+end
 end
 
 robot.move(movement);
@@ -207,7 +219,8 @@ for i = 1:num_par
     particles(i).turn(rotation);
     %particles(i).drawBot(3);
 end
-end
+
+
 
 %%%%%%%%%%%%%%% Convergence testing %%%%%%%%%%%%%%%%%%%%%%%%%
 % Computing the position of the center of mass
@@ -222,6 +235,14 @@ final_orient=sum_orient/num_par ;
 cm.setBotPos(final_pos);
 cm.setBotAng(final_orient);
 
+% RANDOM particles around center of mass %
+% Adding random particles %
+%for rp= 1:(num_par/20)
+%dp=final_pos + [2*rand,2*rand];
+%rind=randi(num_par);
+%particles(rind).setBotPos(dp);
+%particles(rind).setBotAng()
+%end
 % Computing convergence region
 middle=cm.getBotPos();
 xv = [middle(1) + sq_size, middle(1) + sq_size, middle(1) - sq_size, middle(1) - sq_size,middle(1) + sq_size]; 
@@ -268,15 +289,15 @@ end
 
 
 %if(nnz(in) > 0.99*num_par)
-if(in_box == 5)
+if(in_box == conv_time)
 break;
 end
 %else
 %num_scans=1;
 %end
-else 
-bad_scans = scatter;
-step = 1;
+%else 
+%bad_scans = scatter;
+%step = 1;
 end
 end
 %%%%%%%%%%%%%%%%%%%% Final result %%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -312,24 +333,21 @@ dist=sqrt((real_pos(1)-final_pos(1))^2+(real_pos(2)-final_pos(2))^2);
 dist_acc=dist_acc + dist;
 
 % Distance estimation error check
-if( dist > 5 )
- % fprintf(fid1,'###');
-  err_c = err_c+1;
-  if (dist > 15)
-    cerr_c = cerr_c + 1;
-  end
-end
+if( dist < 5 )
+ fprintf('[OK]');
+ ok_c = ok_c+1;
+ end
 
 %if fid1 ~= -1
-  fprintf('Dist:%.1f DAng:%.1f %.2f(s)\n',dist,real_orient-final_orient,e);
-  fprintf('Time:%.2f(s)/%d steps\n',e,step);
+  fprintf('Dist:%.1f DAng:%.1f %.2f(s)',dist,real_orient-final_orient,e);
+  fprintf('Time:%.2f(s) /%d steps\n',e,step);
 %end
 %fprintf('Test case %d\n',test);
 t = cputime;
-
 end
+
 %fprintf(fid1,'ADist:%.1f %.2f(s)\n',dist_acc/test_sample,t-t0);
-%fprintf(fid1,'Errors:%d/Critical(>15cm):%d',err_c,cerr_c);
+%fprintf('OKS%d',ok_c);
 %fclose(fid);
 %fclose(fid1);
 fp=cm.getBotPos();
